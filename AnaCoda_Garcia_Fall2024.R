@@ -1,0 +1,497 @@
+#### Fall 2024 - Rotation w/ Dr. Gilchrist ###
+
+#Objective 1: Learn R Package 'AnaCoDa'
+
+#set working directory
+setwd("C:/Users/nyanc/OneDrive/Documents/All Files - personal/School_UT/Fall2024/Rotation_Gilchrist")
+
+#download r package - dowloaded .tar.gz from CRAN, had to also install VGAM first
+#install.packages("~/All Files - personal/School_UT/Fall2024/Rotation_Gilchrist/AnaCoDa_0.1.4.4.tar.gz", 
+#                 repos = NULL, type = "source")
+
+    #When installing, it mentions this packages most likely requires manual configuration via script
+
+#Load libraries
+library(tidyverse)
+library(AnaCoDa)
+library(seqinr)
+
+#Following R script provided in documentation VVV
+
+#Initialize Genome File of Interest (CDS) - Ex. E.coli (Escherichia coli str. K-12 substr. W3110 (GCA_000010245))
+#Downloaded 9/8/2424 (CDS, AA): 
+#     https://bacteria.ensembl.org/Escherichia_coli_str_k_12_substr_w3110_gca_000010245/Info/Index
+genome <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa")
+
+#Initialize Parameter Object (Beware of typo in original code)
+parameter <- initializeParameterObject(genome = genome, sphi = 1, num.mixtures = 1, 
+                                       gene.assignment = rep(1, length(genome)))
+
+
+model <- initializeModelObject(parameter = parameter, model = "ROC")
+
+
+mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
+
+
+runMCMC(mcmc = mcmc, genome = genome, model = model)
+
+
+#Storing Output
+#...not sure what the output should look like, so had to stop the script for now...
+
+#Restarting the script, letting it run for a bit. 
+
+# Adjustment range: < 0.225 or > 0.325 
+# AA	Acc.Rat
+# A:	0.16
+# C:	0.31
+# D:	0.274
+# E:	0.318
+# F:	0.296
+# G:	0.116
+# H:	0.302
+# I:	0.214
+# K:	0.384
+# L:	0.122
+# N:	0.292
+# P:	0.188
+# Q:	0.308
+# R:	0.152
+# S:	0.164
+# T:	0.12
+# V:	0.256
+# Y:	0.348
+# Z:	0.292
+# Acceptance rate for synthesis rate:
+#   Target range: 0.225-0.325 
+# Adjustment range: < 0.225 or > 0.325 
+# acceptance rates below lower target of 0.225: 163
+# acceptance rate above upper target of 0.325: 180
+# ##################################################
+# Geweke Score after 25000 iterations: 0.280067
+# ##################################################
+# Stopping run based on convergence after 25000 iterations
+
+# Acceptance rates for Codon Specific Parameters
+# Target range: 0.175-0.375 
+# Adjustment range: < 0.225 or > 0.325 
+# AA	Acc.Rat
+# A:	0.236
+# C:	0.276
+# D:	0.322
+# E:	0.342
+# F:	0.25
+# G:	0.172
+# H:	0.308
+# I:	0.216
+# K:	0.338
+# L:	0.134
+# N:	0.242
+# P:	0.156
+# Q:	0.288
+# R:	0.132
+# S:	0.154
+# T:	0.2
+# V:	0.184
+# Y:	0.302
+# Z:	0.296
+# Acceptance rate for synthesis rate:
+#   Target range: 0.225-0.325 
+# Adjustment range: < 0.225 or > 0.325 
+# acceptance rates below lower target of 0.225: 141
+# acceptance rate above upper target of 0.325: 150
+# ##################################################
+# Geweke Score after 50000 iterations: -27.5509
+# ##################################################
+# leaving MCMC loop
+
+#The script finished. I think it took around an hour
+
+#Saving data using C++ methods (which won't work with R methods)
+writeParameterObject(parameter = parameter, file = "parameter_out.Rda")
+writeMCMCObject(mcmc = mcmc, file = "mcmc_out.Rda")
+
+#Use this code to load it back in
+# parameter <- loadParameterObject(file = "parameter_out.Rda")
+# mcmc <- loadMCMCObject(file = "mcmc_out.Rda")
+
+#Now to view results
+csp_mat <- getCSPEstimates(parameter = parameter)   #, CSP="Mutation", mixture = 1, samples = 1000)
+
+head(csp_mat)
+
+#posterior estimates for gene specific parameters (all genes)
+phi_mat <- getExpressionEstimates(parameter = parameter, 
+                                  gene.index = 1:length(genome),
+                                  samples = 1000)
+head(phi_mat)
+
+#posterior estimates for gene specific parameters (sample 100 random)
+phi_mat.random <- getExpressionEstimates(parameter = parameter, 
+                                  gene.index = sample(1:length(genome), 100), 
+                                  samples = 1000)
+head(phi_mat.random)
+
+#Calculate selection coefficient s for each codon and each gene
+selection.coefficients <- getSelectionCoefficients(genome = genome, 
+                                                   parameter = parameter, 
+                                                   samples = 1000)
+head(selection.coefficients)
+
+#Now to compare our values to the weights from CAI
+cai.weights <- getCAIweights(referenceGenome = genome)
+head(cai.weights)
+
+    # GCA       GCC       GCG       GCT       TGC       TGT 
+    # 0.5964128 0.7599486 1.0000000 0.4506385 1.0000000 0.8002539 
+
+nc.per.aa <- getNcAA(genome = genome)
+head(nc.per.aa)
+
+#Comparing distributino of selection coefficients to CAI values estimated from ref gene set
+selection.coefficients <- getSelectionCoefficients(genome = genome, 
+                                                   parameter = parameter, 
+                                                   samples = 1000)
+s <- exp(selection.coefficients)
+cai.weights <- getCAIweights(referenceGenome = genome)
+
+codon.names <- colnames(s)
+h <- hist(s[, 1], plot = F)
+plot(NULL, NULL, axes = F, xlim = c(0,1), ylim = range(c(0,h$counts)), 
+     xlab = "s", ylab = "Frequency", main = codon.names[1], cex.lab = 1.2)
+lines(x = h$breaks, y = c(0,h$counts), type = "S", lwd=2)
+abline(v = cai.weights[1], lwd=2, lty=2)
+axis(1, lwd = 3, cex.axis = 1.2)
+axis(2, lwd = 3, cex.axis = 1.2)
+
+#Now for some diagnostics
+trace <- getTrace(parameter)
+plot.diag <- plot(x = trace, what = "Mutation", mixture = 1) #make figure panel larger to acc omdate graph
+
+#visualize the results of the model fit
+#Ex. use the last 500 samples from mixture 1 for posterior estimate.
+plot(x = model, genome = genome, samples = 500, mixture = 1)
+
+#This will compare different 'mixtures' i.e. gene sets
+plot(parameter, what = "Selection", samples = 500)
+
+### Start here when loading 'post_initial_run.Rdata'
+#Now that we can go from genome file to plots, next step is partitioning the E.coli genome into
+# groups to compare against (i.e. define multiple mixtures) (Ex. lagging strand genes vs. leading strand genes)
+
+#Idea:
+# When downloading the genome (CDS) from Ensembl, each gene SHOULD have either a 1 or -1 assigned to them
+# 1: forward chromosomal strand 
+# -1: reverse chromosomal strand
+#
+# It should be simple enough to partition the genes into two groups based on forward or reverse strand.
+
+#Method: Use modified chomp function to import the .fasta and pull chromosome identifier from .fasta header
+#Idea: Rbind every gene makes it slower, initialize all lists to fit data, then populate
+# #Testing an option to speed up chomp
+# genome <- read_delim(dir, delim = "\n", col_names = FALSE, col_types = "c")
+# 
+# #This counts the number of fasta headers (starts with >) which should equate to gene number
+# temp <- genome %>%
+#   filter(str_detect(X1, "^>")) %>% nrow()
+
+#Define .fasta file in working directory
+dir <- "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+
+#Define function
+chomp<-function(dir){  
+  
+  genome <- read_delim(dir, delim = "\n", col_names = FALSE, col_types = "c")
+  genome.list <- genome %>% na.omit() %>% data.frame()
+  
+  i=0                                             #Initialize empty objects for faster processing time
+  flag=0
+  y<-data.frame()
+  gene.length<-list()
+  sequence.all<-list()
+  alist<-list()
+  #species.name<-species.list                      #this will be user supplied, must match how it looks in FASTA
+  b<-''
+  c<-''
+  
+  cat(paste("Now importing:",dir, "\n"))        #basic progress checker
+  for(i in genome.list[ ,1]){                 #for each line of inputted genomeFASTA
+    if(str_detect(i,"^>")){                     #if row starts with >
+      if(flag==1){                              #flag check to concatenate sequence lines
+        sequence<-str_c(alist,collapse = "")    #collapse
+        aasize<-nchar(sequence)                 #get amino acid size
+        gene.length<-rbind.data.frame(gene.length,aasize)  #store size
+        sequence.all<-rbind.data.frame(sequence.all,sequence)  #store sequence
+        alist<-list()                           #empty temp variable
+        flag=0                                  #reset flag
+      }
+      flag=0                                    #reset
+      pattern.chr<-paste0("Chromosome:\\S+")#make species name pattern
+      pattern.gn<-paste0("description:.*")             #make gene name pattern
+      pattern.type<-paste0("gene_biotype:\\S+")            #make >tr or >sp pattern 
+      a<-str_extract(i,pattern = pattern.chr) #find and store species name (user supplies species name)
+      b<-str_extract(i,pattern = pattern.gn)    #find and store gene name
+      c<-str_extract(i,pattern = pattern.type)  #find and store pattern type (>tr or >sp, should be only two options)
+      abci<-c(a,b,c,i)                             #make above identifiers into easy to bind object
+      y<-rbind(y,abci)                           #rbind to fill rows of new df
+    }
+    else{
+      flag=1                                    #Raise the flag!
+      b<-str_trim(i,side = c("right"))          #Cut off new line character
+      alist[[i]]<-b                             #Storing all sequence lines of current protein
+    }
+  }
+  if(flag==1){                                  #this catches the last protein's sequence VVV
+    sequence<-str_c(alist,collapse = "")        #
+    aasize<-nchar(sequence)                     #
+    gene.length<-rbind.data.frame(gene.length,aasize) #
+    sequence.all<-rbind.data.frame(sequence.all,sequence) #
+    alist<-list()                               #
+    flag=0                                      #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  }
+  y[,5]<-gene.length                             #add sizes to df
+  y[,6]<-sequence.all                             #add sequences to df
+  colnames(y)<-c("Location","Description","Type","Header","Length","Sequence") #add colnames to object 'y'
+  y$Description <- str_replace_all(y$Description, "description:", "")  #remove OS= from species column
+  y$Location <- str_replace_all(y$Location, "Chromosome:", "")  #remove GN= from gene name column
+  y$Type <- str_replace_all(y$Type, "gene_biotype:", "")
+  y$Header <- str_replace_all(y$Header, ">", "")
+  
+  #Count the number of 'genes' that don't have descriptions
+  perc <- (sum(is.na(y$Description)))/nrow(y)*100
+  cat("Percentage of individual sequences w/o description:", perc)
+  
+  genome <<- y
+}   #Load 'chomp' function to import .fasta files
+
+#Run function on .fasta file to import
+chomp(dir)
+
+#Take generated genome file and separate into groups based on chromosome strand assignment (1 or -1)
+reverse <- genome %>% filter(str_detect(Location, ":-1$")) %>% mutate(pos = "R", assignment = 2)
+forward <- genome %>% filter(str_detect(Location, ":1$")) %>% mutate(pos = "F", assignment = 1)
+genome.pos <- rbind(reverse, forward)
+
+#Determine gene distribution
+cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
+    "\nGenes on reverse strand:", nrow(reverse), "-->", (nrow(reverse)/nrow(genome))*100, "%")
+
+    #Ex. E.coli K-12:
+    #    Genes on forward strand: 2149 --> 49.71085 % 
+    #    Genes on reverse strand: 2174 --> 50.28915 %
+
+#Now to combine both dataframes with 
+
+#Using package 'seqinr', output two individual .fasta files (one for forward, one for reverse)
+write.fasta(sequences = as.list(reverse$Sequence),names = reverse$Header,file.out = "reverse.Ecoli.K-12.fasta",open = "w")
+write.fasta(sequences = as.list(forward$Sequence),names = forward$Header,file.out = "forward.Ecoli.K-12.fasta",open = "w")
+
+#We now have two individual .fasta files for both the forward and reverse strands of the genome!
+#Now to return to AnaCoDa and import both files at two separate 'mixtures'
+
+genomes <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa")
+
+#Initialize Parameter Object (Beware of typo in original code)
+parameter <- initializeParameterObject(genome = genomes, sphi = c(0.5, 2), num.mixtures = 2, 
+                                       gene.assignment = genome.pos$assignment)
+
+model <- initializeModelObject(parameter = parameter, model = "ROC")
+
+mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
+
+runMCMC(mcmc = mcmc, genome = genomes, model = model)
+ 
+# Acceptance rates for Codon Specific Parameters
+# Target range: 0.175-0.375 
+# Adjustment range: < 0.225 or > 0.325 
+# AA	Acc.Rat
+# A:	0.162
+# C:	0.248
+# D:	0.26
+# E:	0.204
+# F:	0.264
+# G:	0.086
+# H:	0.288
+# I:	0.144
+# K:	0.264
+# L:	0.072
+# N:	0.278
+# P:	0.086
+# Q:	0.252
+# R:	0.054
+# S:	0.114
+# T:	0.16
+# V:	0.134
+# Y:	0.262
+# Z:	0.264
+# Acceptance rate for synthesis rate:
+#   Target range: 0.225-0.325 
+# Adjustment range: < 0.225 or > 0.325 
+# acceptance rates below lower target of 0.225: 383
+# acceptance rate above upper target of 0.325: 277
+
+### Running MCMC again, this time with two mixtures
+# Acceptance rates for Codon Specific Parameters
+# Target range: 0.175-0.375 
+# Adjustment range: < 0.225 or > 0.325 
+# AA	Acc.Rat
+# A:	0.116
+# C:	0.242
+# D:	0.234
+# E:	0.27
+# F:	0.282
+# G:	0.072
+# H:	0.202
+# I:	0.124
+# K:	0.242
+# L:	0.108
+# N:	0.24
+# P:	0.094
+# Q:	0.27
+# R:	0.108
+# S:	0.15
+# T:	0.13
+# V:	0.12
+# Y:	0.252
+# Z:	0.262
+# Acceptance rate for synthesis rate:
+#   Target range: 0.225-0.325 
+# Adjustment range: < 0.225 or > 0.325 
+# acceptance rates below lower target of 0.225: 376
+# acceptance rate above upper target of 0.325: 360
+# ##################################################
+# Geweke Score after 25000 iterations: 0.0858739
+# ##################################################
+# Stopping run based on convergence after 25000 iterations
+
+### Final Status after MCMC end
+# Status at thinned sample (iteration): 5000 (50000)
+# current logPosterior: -1.31531e+06 
+# current logLikelihood: -2.66602e+06
+# current stdDevSynthesisRate estimate for selection category 0: 0.443495
+# current stdDevSynthesisRate estimate for selection category 1: 0.410679
+# current stdDevSynthesisRate proposal width: 0.0347892
+# current Mixture element probability for element 0: 0.438402
+# current Mixture element probability for element 1: 0.561598
+# Acceptance rates for Codon Specific Parameters
+# Target range: 0.175-0.375 
+# Adjustment range: < 0.225 or > 0.325 
+# AA	Acc.Rat
+# A:	0.09
+# C:	0.216
+# D:	0.232
+# E:	0.304
+# F:	0.238
+# G:	0.122
+# H:	0.28
+# I:	0.07
+# K:	0.28
+# L:	0.116
+# N:	0.262
+# P:	0.118
+# Q:	0.24
+# R:	0.082
+# S:	0.056
+# T:	0.102
+# V:	0.11
+# Y:	0.246
+# Z:	0.278
+# Acceptance rate for synthesis rate:
+#   Target range: 0.225-0.325 
+# Adjustment range: < 0.225 or > 0.325 
+# acceptance rates below lower target of 0.225: 366
+# acceptance rate above upper target of 0.325: 292
+# ##################################################
+# Geweke Score after 50000 iterations: -63.0981
+# ##################################################
+
+#Saving data using C++ methods (which won't work with R methods)
+writeParameterObject(parameter = parameter, file = "parameter_out_Ecoli_split_09112024.Rda")
+writeMCMCObject(mcmc = mcmc, file = "mcmc_out_Ecoli_split_09112024.Rda")
+
+#Use this code to load it back in
+# parameter <- loadParameterObject(file = "parameter_out.Rda")
+# mcmc <- loadMCMCObject(file = "mcmc_out.Rda")
+
+#Now to view results
+csp_mat_1 <- getCSPEstimates(parameter = parameter, mixture = 1)   #, CSP="Mutation", mixture = 1, samples = 1000)
+csp_mat_2 <- getCSPEstimates(parameter = parameter, mixture = 2)
+
+head(csp_mat_1)
+head(csp_mat_2)
+
+#posterior estimates for gene specific parameters (all genes)
+phi_mat <- getExpressionEstimates(parameter = parameter, 
+                                  gene.index = 1:length(genome),
+                                  samples = 1000)
+head(phi_mat)
+
+# #posterior estimates for gene specific parameters (sample 100 random)
+# phi_mat.random <- getExpressionEstimates(parameter = parameter, 
+#                                          gene.index = sample(1:length(genome), 100), 
+#                                          samples = 1000)
+# head(phi_mat.random)
+
+#Calculate selection coefficient s for each codon and each gene
+selection.coefficients <- getSelectionCoefficients(genome = genomes, 
+                                                   parameter = parameter, 
+                                                   samples = 1000)
+head(selection.coefficients)
+
+#Now to compare our values to the weights from CAI
+cai.weights <- getCAIweights(referenceGenome = genomes)
+head(cai.weights)
+
+# GCA       GCC       GCG       GCT       TGC       TGT 
+# 0.5964128 0.7599486 1.0000000 0.4506385 1.0000000 0.8002539 
+
+nc.per.aa <- getNcAA(genome = genomes)
+head(nc.per.aa)
+
+#Comparing distribution of selection coefficients to CAI values estimated from ref gene set
+selection.coefficients <- getSelectionCoefficients(genome = genomes, 
+                                                   parameter = parameter, 
+                                                   samples = 1000)
+s <- exp(selection.coefficients)
+cai.weights <- getCAIweights(referenceGenome = genomes)
+
+codon.names <- colnames(s)
+h <- hist(s[, 1], plot = F)
+plot(NULL, NULL, axes = F, xlim = c(0,1), ylim = range(c(0,h$counts)), 
+     xlab = "s", ylab = "Frequency", main = codon.names[1], cex.lab = 1.2)
+lines(x = h$breaks, y = c(0,h$counts), type = "S", lwd=2)
+abline(v = cai.weights[1], lwd=2, lty=2)
+axis(1, lwd = 3, cex.axis = 1.2)
+axis(2, lwd = 3, cex.axis = 1.2)
+
+#Now for some diagnostics
+trace <- getTrace(parameter)
+plot.diag.1 <- plot(x = trace, what = "Mutation", mixture = 1) #make figure panel larger to accommodate graph
+plot.diag.2 <- plot(x = trace, what = "Mutation", mixture = 2)
+#save plots 15x15 cairo
+
+#visualize the results of the model fit
+#Ex. use the last 500 samples from mixture 1 for posterior estimate.
+plot(x = model, genome = genomes, samples = 3000, mixture = 1)
+plot(x = model, genome = genomes, samples = 3000, mixture = 2)
+#save plots 10x10 cairo
+
+#This will compare different 'mixtures' i.e. gene sets
+plot(parameter, what = "Selection", samples = 3000)
+#save plot 8x8 cairo
+
+### NOTE ###
+#
+#  When exporting a figure to inkscape, use cairo.pdf to preserve Greek symbols (phi)
+#
+###      ###
+
+### Next step: send figures to Mike; fit gene naming scheme VVV
+#(default is to take the first string of characters before white space)
+#Idea: for genes with missing description, give identifier, then concatenate (sep = ".")
+
+
+
+
+
