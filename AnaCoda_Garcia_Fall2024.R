@@ -15,6 +15,8 @@ setwd("C:/Users/nyanc/OneDrive/Documents/All Files - personal/School_UT/Fall2024
 library(tidyverse)
 library(AnaCoDa)
 library(seqinr)
+#install.packages("bayesplot")
+library(bayesplot)
 
 # #Following R script provided in documentation VVV
 # 
@@ -273,7 +275,8 @@ chomp(dir)
 #Take generated genome file and separate into groups based on chromosome strand assignment (1 or -1)
 reverse <- genome %>% filter(str_detect(Location, ":-1$")) %>% mutate(pos = "R", assignment = 2)
 forward <- genome %>% filter(str_detect(Location, ":1$")) %>% mutate(pos = "F", assignment = 1)
-genome.pos <- rbind(reverse, forward)
+genome.pos <- rbind(reverse, forward)   #This changed the order, which messed up the gene.assignments!
+genome.pos <- genome %>% left_join(genome.pos)
 
 #Determine gene distribution
 cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
@@ -283,7 +286,9 @@ cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome
     #    Genes on forward strand: 2149 --> 49.71085 % 
     #    Genes on reverse strand: 2174 --> 50.28915 %
 
-#Now to combine both dataframes with 
+#Output new edited .fasta file
+#out.fasta <- genome.pos %>% mutate(Header = str_replace_all(Header, " ", "*"))
+#write.fasta(sequences = as.list(out.fasta$Sequence),names = out.fasta$Header,file.out = "Ecoli.K12.edit.fasta", open = "w")
 
 #Using package 'seqinr', output two individual .fasta files (one for forward, one for reverse)
 #write.fasta(sequences = as.list(reverse$Sequence),names = reverse$Header,file.out = "reverse.Ecoli.K-12.fasta",open = "w")
@@ -293,6 +298,7 @@ cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome
 #Now to return to AnaCoDa and import both files at two separate 'mixtures'
 
 genomes <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa")
+#genomes <- initializeGenomeObject(file = "Ecoli.K12.edit.fasta")
 
 #Initialize Parameter Object (Beware of typo in original code)
 parameter <- initializeParameterObject(genome = genomes, sphi = c(0.5, 2), num.mixtures = 2, 
@@ -418,230 +424,229 @@ mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
 # mcmc <- loadMCMCObject(file = "test_mcmc.Rda")
 
 # #Saving data using C++ methods (which won't work with R methods)
-# writeParameterObject(parameter = parameter, file = "parameter_out_Ecoli_split_09112024.Rda")
-# writeMCMCObject(mcmc = mcmc, file = "mcmc_out_Ecoli_split_09112024.Rda")
+#writeParameterObject(parameter = parameter, file = "parameter_out_Ecoli_split_09162024.Rda")
+#writeMCMCObject(mcmc = mcmc, file = "mcmc_out_Ecoli_split_09162024.Rda")
 
 #Use this code to load it back in
-parameter <- loadParameterObject(files = "parameter_out_Ecoli_split_09112024.Rda")
-mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09112024.Rda")
+#parameter <- loadParameterObject(files = "parameter_out_Ecoli_split_09112024.Rda")
+mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09162024.Rda")
 
-### 
-
-i <- 1
-files <- "parameter_out_Ecoli_split_09112024.Rda"
-
-#load("parameter_out_Ecoli_split_09112024.Rda")
-#This function is currently not working
-setBaseInfo <- function(parameter, files){
-  for (i in 1:length(files)) {
-    tempEnv <- new.env();
-    load(file = files[i], envir = tempEnv)
-    if (i == 1) {
-      categories <- tempEnv$paramBase$categories
-      categories.matrix <- do.call("rbind", tempEnv$paramBase$categories)
-      numMixtures <- tempEnv$paramBase$numMix
+### This code was used to import parameter file an alternative way
+  #i <- 1
+  files <- "parameter_out_Ecoli_split_09162024.Rda"
+  
+  #load("parameter_out_Ecoli_split_09112024.Rda")
+  #This function is currently not working - FIXED
+  loadROCParameterObject <- function(parameter, files){
+    
+    setBaseInfo <- function(parameter, files){
+      for (i in 1:length(files)) {
+        tempEnv <- new.env();
+        load(file = files[i], envir = tempEnv)
+        if (i == 1) {
+          categories <- tempEnv$paramBase$categories
+          categories.matrix <- do.call("rbind", tempEnv$paramBase$categories)
+          numMixtures <- tempEnv$paramBase$numMix
+          numMutationCategories <- tempEnv$paramBase$numMut
+          numSelectionCategories <- tempEnv$paramBase$numSel
+          mixtureAssignment <- tempEnv$paramBase$curMixAssignment
+          lastIteration <- tempEnv$paramBase$lastIteration
+          max <- tempEnv$paramBase$lastIteration + 1
+          grouplist <- tempEnv$paramBase$grouplist
+          
+          stdDevSynthesisRateTraces <- vector("list", length = numSelectionCategories)
+          for (j in 1:numSelectionCategories) {
+            stdDevSynthesisRateTraces[[j]] <- tempEnv$paramBase$stdDevSynthesisRateTraces[[j]][1:max]
+          }
+          stdDevSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$stdDevSynthesisRateAcceptRatTrace
+          synthesisRateTrace <- vector("list", length = numSelectionCategories)
+          for (j in 1:numSelectionCategories) {
+            for (k in 1:length(tempEnv$paramBase$synthRateTrace[[j]])){
+              synthesisRateTrace[[j]][[k]] <- tempEnv$paramBase$synthRateTrace[[j]][[k]][1:max]
+            }
+          }
+          synthesisRateAcceptanceRateTrace <- tempEnv$paramBase$synthAcceptRatTrace
+          mixtureAssignmentTrace <- vector("list", length = length(tempEnv$paramBase$mixAssignTrace))
+          for (j in 1:length(tempEnv$paramBase$mixAssignTrace)){
+            mixtureAssignmentTrace[[j]] <- tempEnv$paramBase$mixAssignTrace[[j]][1:max]
+          }
+          mixtureProbabilitiesTrace <- c()
+          for (j in 1:numMixtures) {
+            mixtureProbabilitiesTrace[[j]] <- tempEnv$paramBase$mixProbTrace[[j]][1:max]
+          }
+          codonSpecificAcceptanceRateTrace <- tempEnv$paramBase$codonSpecificAcceptRatTrace
+          
+          ### ERROR HERE ###
+          withPhi <- tempEnv$paramBase$withPhi
+          if (withPhi){
+            phiGroups <- length(tempEnv$paramBase$synthesisOffsetTrace) #add $paramBase
+            synthesisOffsetTrace <- c()
+            for (j in 1:phiGroups) {
+              synthesisOffsetTrace[[j]] <- tempEnv$paramBase$synthesisOffsetTrace[[j]][1:max]
+            }
+            
+            
+            synthesisOffsetAcceptanceRateTrace <- tempEnv$paramBase$synthesisOffsetAcceptRatTrace
+            
+            
+            observedSynthesisNoiseTrace <- c()
+            for (j in 1:phiGroups) {
+              observedSynthesisNoiseTrace[[j]] <- tempEnv$paramBase$observedSynthesisNoiseTrace[[j]][1:max]
+            }
+            #need number of phi groups, not the number of mixtures apparently.
+          }else {
+            synthesisOffsetTrace <- c()
+            synthesisOffsetAcceptanceRateTrace <- c()
+            observedSynthesisNoiseTrace <- c()
+          }
+        } else {
+          if (sum(categories.matrix != do.call("rbind", tempEnv$paramBase$categories)) != 0){
+            stop("categories is not the same between all files")
+          }#end of error check
+          
+          if (numMixtures != tempEnv$paramBase$numMix){
+            stop("The number of mixtures is not the same between files")
+          }
+          
+          if (numMutationCategories != tempEnv$paramBase$numMut){
+            stop("The number of mutation categories is not the same between files")
+          }
+          
+          if (numSelectionCategories != tempEnv$paramBase$numSel){
+            stop("The number of selection categories is not the same between files")
+          }
+          
+          if (length(mixtureAssignment) != length(tempEnv$paramBase$curMixAssignment)){
+            stop("The length of the mixture assignment is not the same between files. 
+               Make sure the same genome is used on each run.")
+          }
+          
+          if(length(grouplist) != length(tempEnv$paramBase$grouplist)){
+            stop("Number of Amino Acids/Codons is not the same between files.")	
+          }
+          if (withPhi != tempEnv$paramBase$withPhi){
+            stop("Runs do not match in concern in with.phi")
+          }
+          
+          curSynthesisOffsetTrace <- tempEnv$paramBase$synthesisOffsetTrace
+          curSynthesisOffsetAcceptanceRateTrace <- tempEnv$paramBase$synthesisOffsetAcceptRatTrace
+          curObservedSynthesisNoiseTrace <- tempEnv$paramBase$observedSynthesisNoiseTrace
+          
+          if (withPhi){
+            combineTwoDimensionalTrace(synthesisOffsetTrace, curSynthesisOffsetTrace, max)
+            size <- length(curSynthesisOffsetAcceptanceRateTrace)
+            combineTwoDimensionalTrace(synthesisOffsetAcceptanceRateTrace, curSynthesisOffsetAcceptanceRateTrace, size)
+            combineTwoDimensionalTrace(observedSynthesisNoiseTrace, curObservedSynthesisNoiseTrace, max)
+          }
+          
+          
+          curStdDevSynthesisRateTraces <- tempEnv$paramBase$stdDevSynthesisRateTraces
+          curStdDevSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$stdDevSynthesisRateAcceptRatTrace
+          curSynthesisRateTrace <- tempEnv$paramBase$synthRateTrace
+          curSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$synthAcceptRatTrace
+          curMixtureAssignmentTrace <- tempEnv$paramBase$mixAssignTrace
+          curMixtureProbabilitiesTrace <- tempEnv$paramBase$mixProbTrace
+          curCodonSpecificAcceptanceRateTrace <- tempEnv$paramBase$codonSpecificAcceptRatTrace
+          
+          lastIteration <- lastIteration + tempEnv$paramBase$lastIteration
+          
+          
+          #assuming all checks have passed, time to concatenate traces
+          max <- tempEnv$paramBase$lastIteration + 1
+          combineTwoDimensionalTrace(stdDevSynthesisRateTraces, curStdDevSynthesisRateTraces, max)
+          
+          size <- length(curStdDevSynthesisRateAcceptanceRateTrace)
+          stdDevSynthesisRateAcceptanceRateTrace <- c(stdDevSynthesisRateAcceptanceRateTrace, 
+                                                      curStdDevSynthesisRateAcceptanceRateTrace[2:size])
+          
+          
+          combineThreeDimensionalTrace(synthesisRateTrace, curSynthesisRateTrace, max)
+          size <- length(curSynthesisRateAcceptanceRateTrace)
+          combineThreeDimensionalTrace(synthesisRateAcceptanceRateTrace, curSynthesisRateAcceptanceRateTrace, size)
+          
+          combineTwoDimensionalTrace(mixtureAssignmentTrace, curMixtureAssignmentTrace, max)
+          combineTwoDimensionalTrace(mixtureProbabilitiesTrace, curMixtureProbabilitiesTrace, max)
+          size <- length(curCodonSpecificAcceptanceRateTrace)
+          combineTwoDimensionalTrace(codonSpecificAcceptanceRateTrace, curCodonSpecificAcceptanceRateTrace, size)
+        }
+      }
+      
+      parameter$setCategories(categories)
+      parameter$setCategoriesForTrace()  
+      parameter$numMixtures <- numMixtures
+      parameter$numMutationCategories <- numMutationCategories
+      parameter$numSelectionCategories <- numSelectionCategories
+      parameter$setMixtureAssignment(tempEnv$paramBase$curMixAssignment) #want the last in the file sequence
+      parameter$setLastIteration(lastIteration)
+      parameter$setGroupList(grouplist)
+      
+      trace <- parameter$getTraceObject()
+      trace$setStdDevSynthesisRateTraces(stdDevSynthesisRateTraces)
+      trace$setStdDevSynthesisRateAcceptanceRateTrace(stdDevSynthesisRateAcceptanceRateTrace)
+      trace$setSynthesisRateTrace(synthesisRateTrace)
+      trace$setSynthesisRateAcceptanceRateTrace(synthesisRateAcceptanceRateTrace)
+      trace$setSynthesisOffsetTrace(synthesisOffsetTrace)
+      trace$setSynthesisOffsetAcceptanceRateTrace(synthesisOffsetAcceptanceRateTrace)
+      trace$setObservedSynthesisNoiseTrace(observedSynthesisNoiseTrace)
+      trace$setMixtureAssignmentTrace(mixtureAssignmentTrace)
+      trace$setMixtureProbabilitiesTrace(mixtureProbabilitiesTrace)
+      trace$setCodonSpecificAcceptanceRateTrace(codonSpecificAcceptanceRateTrace)
+      
+      parameter$setTraceObject(trace)
+      return(parameter)
+    } #changed a single line
+    
+    parameter <- setBaseInfo(parameter, files)
+    for (i in 1:length(files)){
+      tempEnv <- new.env();
+      load(file = files[i], envir = tempEnv)
+      
       numMutationCategories <- tempEnv$paramBase$numMut
       numSelectionCategories <- tempEnv$paramBase$numSel
-      mixtureAssignment <- tempEnv$paramBase$curMixAssignment
-      lastIteration <- tempEnv$paramBase$lastIteration
       max <- tempEnv$paramBase$lastIteration + 1
-      grouplist <- tempEnv$paramBase$grouplist
       
-      stdDevSynthesisRateTraces <- vector("list", length = numSelectionCategories)
-      for (j in 1:numSelectionCategories) {
-        stdDevSynthesisRateTraces[[j]] <- tempEnv$paramBase$stdDevSynthesisRateTraces[[j]][1:max]
-      }
-      stdDevSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$stdDevSynthesisRateAcceptRatTrace
-      synthesisRateTrace <- vector("list", length = numSelectionCategories)
-      for (j in 1:numSelectionCategories) {
-        for (k in 1:length(tempEnv$paramBase$synthRateTrace[[j]])){
-          synthesisRateTrace[[j]][[k]] <- tempEnv$paramBase$synthRateTrace[[j]][[k]][1:max]
-        }
-      }
-      synthesisRateAcceptanceRateTrace <- tempEnv$paramBase$synthAcceptRatTrace
-      mixtureAssignmentTrace <- vector("list", length = length(tempEnv$paramBase$mixAssignTrace))
-      for (j in 1:length(tempEnv$paramBase$mixAssignTrace)){
-        mixtureAssignmentTrace[[j]] <- tempEnv$paramBase$mixAssignTrace[[j]][1:max]
-      }
-      mixtureProbabilitiesTrace <- c()
-      for (j in 1:numMixtures) {
-        mixtureProbabilitiesTrace[[j]] <- tempEnv$paramBase$mixProbTrace[[j]][1:max]
-      }
-      codonSpecificAcceptanceRateTrace <- tempEnv$paramBase$codonSpecificAcceptRatTrace
-      
-      ### ERROR HERE ###
-      withPhi <- tempEnv$paramBase$withPhi
-      if (withPhi){
-        phiGroups <- length(tempEnv$paramBase$synthesisOffsetTrace) #add $paramBase
-        synthesisOffsetTrace <- c()
-        for (j in 1:phiGroups) {
-          synthesisOffsetTrace[[j]] <- tempEnv$paramBase$synthesisOffsetTrace[[j]][1:max]
+      if (i == 1){
+        
+        
+        codonSpecificParameterTraceMut <- vector("list", length=numMutationCategories)
+        for (j in 1:numMutationCategories) {
+          codonSpecificParameterTraceMut[[j]] <- vector("list", length=length(tempEnv$mutationTrace[[j]]))
+          for (k in 1:length(tempEnv$mutationTrace[[j]])){
+            codonSpecificParameterTraceMut[[j]][[k]] <- tempEnv$mutationTrace[[j]][[k]][1:max]
+          }
         }
         
-        
-        synthesisOffsetAcceptanceRateTrace <- tempEnv$paramBase$synthesisOffsetAcceptRatTrace
-        
-        
-        observedSynthesisNoiseTrace <- c()
-        for (j in 1:phiGroups) {
-          observedSynthesisNoiseTrace[[j]] <- tempEnv$paramBase$observedSynthesisNoiseTrace[[j]][1:max]
+        codonSpecificParameterTraceSel <- vector("list", length=numSelectionCategories)
+        for (j in 1:numSelectionCategories) {
+          codonSpecificParameterTraceSel[[j]] <- vector("list", length=length(tempEnv$selectionTrace[[j]]))
+          for (k in 1:length(tempEnv$selectionTrace[[j]])){
+            codonSpecificParameterTraceSel[[j]][[k]] <- tempEnv$selectionTrace[[j]][[k]][1:max]
+          }
         }
-        #need number of phi groups, not the number of mixtures apparently.
-      }else {
-        synthesisOffsetTrace <- c()
-        synthesisOffsetAcceptanceRateTrace <- c()
-        observedSynthesisNoiseTrace <- c()
-      }
-    } else {
-      if (sum(categories.matrix != do.call("rbind", tempEnv$paramBase$categories)) != 0){
-        stop("categories is not the same between all files")
-      }#end of error check
-      
-      if (numMixtures != tempEnv$paramBase$numMix){
-        stop("The number of mixtures is not the same between files")
-      }
-      
-      if (numMutationCategories != tempEnv$paramBase$numMut){
-        stop("The number of mutation categories is not the same between files")
-      }
-      
-      if (numSelectionCategories != tempEnv$paramBase$numSel){
-        stop("The number of selection categories is not the same between files")
-      }
-      
-      if (length(mixtureAssignment) != length(tempEnv$paramBase$curMixAssignment)){
-        stop("The length of the mixture assignment is not the same between files. 
-             Make sure the same genome is used on each run.")
-      }
-      
-      if(length(grouplist) != length(tempEnv$paramBase$grouplist)){
-        stop("Number of Amino Acids/Codons is not the same between files.")	
-      }
-      if (withPhi != tempEnv$paramBase$withPhi){
-        stop("Runs do not match in concern in with.phi")
-      }
-      
-      curSynthesisOffsetTrace <- tempEnv$paramBase$synthesisOffsetTrace
-      curSynthesisOffsetAcceptanceRateTrace <- tempEnv$paramBase$synthesisOffsetAcceptRatTrace
-      curObservedSynthesisNoiseTrace <- tempEnv$paramBase$observedSynthesisNoiseTrace
-      
-      if (withPhi){
-        combineTwoDimensionalTrace(synthesisOffsetTrace, curSynthesisOffsetTrace, max)
-        size <- length(curSynthesisOffsetAcceptanceRateTrace)
-        combineTwoDimensionalTrace(synthesisOffsetAcceptanceRateTrace, curSynthesisOffsetAcceptanceRateTrace, size)
-        combineTwoDimensionalTrace(observedSynthesisNoiseTrace, curObservedSynthesisNoiseTrace, max)
-      }
-      
-      
-      curStdDevSynthesisRateTraces <- tempEnv$paramBase$stdDevSynthesisRateTraces
-      curStdDevSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$stdDevSynthesisRateAcceptRatTrace
-      curSynthesisRateTrace <- tempEnv$paramBase$synthRateTrace
-      curSynthesisRateAcceptanceRateTrace <- tempEnv$paramBase$synthAcceptRatTrace
-      curMixtureAssignmentTrace <- tempEnv$paramBase$mixAssignTrace
-      curMixtureProbabilitiesTrace <- tempEnv$paramBase$mixProbTrace
-      curCodonSpecificAcceptanceRateTrace <- tempEnv$paramBase$codonSpecificAcceptRatTrace
-      
-      lastIteration <- lastIteration + tempEnv$paramBase$lastIteration
-      
-      
-      #assuming all checks have passed, time to concatenate traces
-      max <- tempEnv$paramBase$lastIteration + 1
-      combineTwoDimensionalTrace(stdDevSynthesisRateTraces, curStdDevSynthesisRateTraces, max)
-      
-      size <- length(curStdDevSynthesisRateAcceptanceRateTrace)
-      stdDevSynthesisRateAcceptanceRateTrace <- c(stdDevSynthesisRateAcceptanceRateTrace, 
-                                                  curStdDevSynthesisRateAcceptanceRateTrace[2:size])
-      
-      
-      combineThreeDimensionalTrace(synthesisRateTrace, curSynthesisRateTrace, max)
-      size <- length(curSynthesisRateAcceptanceRateTrace)
-      combineThreeDimensionalTrace(synthesisRateAcceptanceRateTrace, curSynthesisRateAcceptanceRateTrace, size)
-      
-      combineTwoDimensionalTrace(mixtureAssignmentTrace, curMixtureAssignmentTrace, max)
-      combineTwoDimensionalTrace(mixtureProbabilitiesTrace, curMixtureProbabilitiesTrace, max)
-      size <- length(curCodonSpecificAcceptanceRateTrace)
-      combineTwoDimensionalTrace(codonSpecificAcceptanceRateTrace, curCodonSpecificAcceptanceRateTrace, size)
-    }
+      }else{
+        
+        curCodonSpecificParameterTraceMut <- tempEnv$mutationTrace
+        curCodonSpecificParameterTraceSel <- tempEnv$selectionTrace
+        combineThreeDimensionalTrace(codonSpecificParameterTraceMut, curCodonSpecificParameterTraceMut, max)
+        combineThreeDimensionalTrace(codonSpecificParameterTraceSel, curCodonSpecificParameterTraceSel, max)
+      }#end of if-else
+    }#end of for loop (files)
+    
+    trace <- parameter$getTraceObject()
+    
+    trace$setCodonSpecificParameterTrace(codonSpecificParameterTraceMut, 0)
+    trace$setCodonSpecificParameterTrace(codonSpecificParameterTraceSel, 1)
+    
+    parameter$currentMutationParameter <- tempEnv$currentMutation
+    parameter$currentSelectionParameter <- tempEnv$currentSelection
+    parameter$proposedMutationParameter <- tempEnv$proposedMutation
+    parameter$proposedSelectionParameter <- tempEnv$proposedSelection
+    parameter$setTraceObject(trace)
+    return(parameter) 
   }
   
-  parameter$setCategories(categories)
-  parameter$setCategoriesForTrace()  
-  parameter$numMixtures <- numMixtures
-  parameter$numMutationCategories <- numMutationCategories
-  parameter$numSelectionCategories <- numSelectionCategories
-  parameter$setMixtureAssignment(tempEnv$paramBase$curMixAssignment) #want the last in the file sequence
-  parameter$setLastIteration(lastIteration)
-  parameter$setGroupList(grouplist)
-  
-  trace <- parameter$getTraceObject()
-  trace$setStdDevSynthesisRateTraces(stdDevSynthesisRateTraces)
-  trace$setStdDevSynthesisRateAcceptanceRateTrace(stdDevSynthesisRateAcceptanceRateTrace)
-  trace$setSynthesisRateTrace(synthesisRateTrace)
-  trace$setSynthesisRateAcceptanceRateTrace(synthesisRateAcceptanceRateTrace)
-  trace$setSynthesisOffsetTrace(synthesisOffsetTrace)
-  trace$setSynthesisOffsetAcceptanceRateTrace(synthesisOffsetAcceptanceRateTrace)
-  trace$setObservedSynthesisNoiseTrace(observedSynthesisNoiseTrace)
-  trace$setMixtureAssignmentTrace(mixtureAssignmentTrace)
-  trace$setMixtureProbabilitiesTrace(mixtureProbabilitiesTrace)
-  trace$setCodonSpecificAcceptanceRateTrace(codonSpecificAcceptanceRateTrace)
-  
-  parameter$setTraceObject(trace)
-  return(parameter)
-}
-
-loadROCParameterObject <- function(parameter, files)
-{
-  parameter <- setBaseInfo(parameter, files)
-  for (i in 1:length(files)){
-    tempEnv <- new.env();
-    load(file = files[i], envir = tempEnv)
-    
-    numMutationCategories <- tempEnv$paramBase$numMut
-    numSelectionCategories <- tempEnv$paramBase$numSel
-    max <- tempEnv$paramBase$lastIteration + 1
-    
-    if (i == 1){
-      
-      
-      codonSpecificParameterTraceMut <- vector("list", length=numMutationCategories)
-      for (j in 1:numMutationCategories) {
-        codonSpecificParameterTraceMut[[j]] <- vector("list", length=length(tempEnv$mutationTrace[[j]]))
-        for (k in 1:length(tempEnv$mutationTrace[[j]])){
-          codonSpecificParameterTraceMut[[j]][[k]] <- tempEnv$mutationTrace[[j]][[k]][1:max]
-        }
-      }
-      
-      codonSpecificParameterTraceSel <- vector("list", length=numSelectionCategories)
-      for (j in 1:numSelectionCategories) {
-        codonSpecificParameterTraceSel[[j]] <- vector("list", length=length(tempEnv$selectionTrace[[j]]))
-        for (k in 1:length(tempEnv$selectionTrace[[j]])){
-          codonSpecificParameterTraceSel[[j]][[k]] <- tempEnv$selectionTrace[[j]][[k]][1:max]
-        }
-      }
-    }else{
-      
-      curCodonSpecificParameterTraceMut <- tempEnv$mutationTrace
-      curCodonSpecificParameterTraceSel <- tempEnv$selectionTrace
-      combineThreeDimensionalTrace(codonSpecificParameterTraceMut, curCodonSpecificParameterTraceMut, max)
-      combineThreeDimensionalTrace(codonSpecificParameterTraceSel, curCodonSpecificParameterTraceSel, max)
-    }#end of if-else
-  }#end of for loop (files)
-  
-  trace <- parameter$getTraceObject()
-  
-  trace$setCodonSpecificParameterTrace(codonSpecificParameterTraceMut, 0)
-  trace$setCodonSpecificParameterTrace(codonSpecificParameterTraceSel, 1)
-  
-  parameter$currentMutationParameter <- tempEnv$currentMutation
-  parameter$currentSelectionParameter <- tempEnv$currentSelection
-  parameter$proposedMutationParameter <- tempEnv$proposedMutation
-  parameter$proposedSelectionParameter <- tempEnv$proposedSelection
-  parameter$setTraceObject(trace)
-  return(parameter) 
-}
-
+  parameter <- loadROCParameterObject(parameter, files)
 ###
-
 
 #Now to view results
 csp_mat_1 <- getCSPEstimates(parameter = parameter, mixture = 1)   #, CSP="Mutation", mixture = 1, samples = 1000)
@@ -652,9 +657,17 @@ head(csp_mat_2)
 
 #posterior estimates for gene specific parameters (all genes)
 phi_mat <- getExpressionEstimates(parameter = parameter, 
-                                  gene.index = 1:length(genome),
-                                  samples = 1000)
+                                  gene.index = 1:length(genomes),
+                                  samples = 3000)
 head(phi_mat)
+
+# Histogram of posterior distribution
+ggplot(phi_mat, aes(x = Mean)) +
+  geom_histogram(fill = "blue", color = "black") +
+  labs(title = "Histogram of Values", x = "Phi", y = "Frequency")
+
+# Density plot of posterior distribution
+plot(density(phi_mat), main = "Density Plot of Phi", xlab = "Phi")
 
 # #posterior estimates for gene specific parameters (sample 100 random)
 # phi_mat.random <- getExpressionEstimates(parameter = parameter, 
@@ -665,7 +678,7 @@ head(phi_mat)
 #Calculate selection coefficient s for each codon and each gene
 selection.coefficients <- getSelectionCoefficients(genome = genomes, 
                                                    parameter = parameter, 
-                                                   samples = 1000)
+                                                   samples = 3000)
 head(selection.coefficients)
 
 #Now to compare our values to the weights from CAI
@@ -681,7 +694,7 @@ head(nc.per.aa)
 #Comparing distribution of selection coefficients to CAI values estimated from ref gene set
 selection.coefficients <- getSelectionCoefficients(genome = genomes, 
                                                    parameter = parameter, 
-                                                   samples = 1000)
+                                                   samples = 3000)
 s <- exp(selection.coefficients)
 cai.weights <- getCAIweights(referenceGenome = genomes)
 
@@ -694,10 +707,14 @@ abline(v = cai.weights[1], lwd=2, lty=2)
 axis(1, lwd = 3, cex.axis = 1.2)
 axis(2, lwd = 3, cex.axis = 1.2)
 
-#Now for some diagnostics
+#Now for some diagnostics (Trace plots - how the parameter values change each iteration)
 trace <- getTrace(parameter)
-plot.diag.1 <- plot(x = trace, what = "Mutation", mixture = 1) #make figure panel larger to accommodate graph
-plot.diag.2 <- plot(x = trace, what = "Mutation", mixture = 2)
+trace.s <- parameter$getTraceObject()
+plot.diag.1m <- plot(x = trace, what = "Mutation", mixture = 1) #make figure panel larger to accommodate graph
+plot.diag.2m <- plot(x = trace, what = "Mutation", mixture = 2)
+
+plot.diag.1s <- plot(x = trace, what = "Selection", mixture = 1) #make figure panel larger to accommodate graph
+plot.diag.2s <- plot(x = trace, what = "Selection", mixture = 2)
 #save plots 15x15 cairo
 
 #visualize the results of the model fit
@@ -708,6 +725,7 @@ plot(x = model, genome = genomes, samples = 3000, mixture = 2)
 
 #This will compare different 'mixtures' i.e. gene sets
 plot(parameter, what = "Selection", samples = 3000)
+plot(parameter, what = "Mutation", samples = 3000)
 #save plot 8x8 cairo
 
 ### NOTE ###
@@ -720,7 +738,32 @@ plot(parameter, what = "Selection", samples = 3000)
 #(default is to take the first string of characters before white space)
 #Idea: for genes with missing description, give identifier, then concatenate (sep = ".")
 
+#Objective: Use package 'Bayesplot' for visualization
+#From AnaCoDa, we obtain codon-specific parameters (csp_mat) and gene-specific parameters (phi_mat)
+#We also obtain selection coefficients for each codon and each gene.
 
+#Current options for what = ""
+#Selection, Mutation, MixtureProbability, Sphi, Mphi, ExpectedPhi, AcceptanceCSP
 
+### Example: Store trace information as data.frame
+temp <- as.data.frame(trace$getMixtureProbabilitiesTrace())
 
+phi_trace <- as.data.frame(trace$getSynthesisRateTrace())
+#This code gets a df where each row is an iteration and columns are ??? but number=n*2 (4323 + 4323)
 
+#Gets trace of synthesis rates
+temp <- trace$getSynthesisRateTrace()
+#gets gene names
+temp <- getNames(genomes)
+
+#This captures the trace of each gene's parameters! (x/5001)
+df <- trace$getSynthesisRateTrace()
+df_1 <- df[[1]]
+names(df_1) <- getNames(genomes)
+df.1 <- df_1 %>% data.frame() %>% slice(-(1:2000))
+
+#This captures the actual estimate of each gene's parameters! (x/4323)
+df <- parameter$getSynthesisRate()
+df_1 <- df[[1]]
+names(df_1) <- getNames(genomes)
+df.1 <- df_1 %>% data.frame()
