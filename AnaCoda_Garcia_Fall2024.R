@@ -785,17 +785,29 @@ posterior <- as.matrix(fit)
 
 plot_title <- ggtitle("Posterior distributions",
                       "with medians and 80% intervals")
+
+#This plots traces of the parameter
 mcmc_areas(posterior,
            pars = c("cyl", "drat", "am", "wt"),
            prob = 0.8) + plot_title
 
-#Now trying it out on our data - not sure what the ideal estimate is to plot
+# #Now trying it out on our data - not sure what the ideal estimate is to plot
+# mcmc_areas(
+#   phi.df,
+#   pars = c("Mean", "Mean.log10", "Std.Dev", "log10.Std.Dev"),
+#   prob = 0.8
+# ) + plot_title
+
+#Plotting the trace
 mcmc_areas(
   phi.df,
   pars = c("Mean", "Mean.log10", "Std.Dev", "log10.Std.Dev"),
   prob = 0.8
 ) + plot_title
 
+#Could try to construct a matrix with each codon's estimates...
+csp.df.1 <- csp_mat_1 %>% data.frame()
+csp.df.2 <- csp_mat_2 %>% data.frame()
 
-
+hist(csp.df.1$Mutation.Mean)
 
