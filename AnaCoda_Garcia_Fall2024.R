@@ -276,7 +276,7 @@ chomp(dir)
 reverse <- genome %>% filter(str_detect(Location, ":-1$")) %>% mutate(pos = "R", assignment = 2)
 forward <- genome %>% filter(str_detect(Location, ":1$")) %>% mutate(pos = "F", assignment = 1)
 genome.pos <- rbind(reverse, forward)   #This changed the order, which messed up the gene.assignments!
-genome.pos <- genome %>% left_join(genome.pos)
+genome.pos <- genome %>% left_join(genome.pos) %>% mutate(id = str_extract(Header, "^[^\\s]+"))
 
 #Determine gene distribution
 cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
@@ -304,12 +304,14 @@ genomes <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110
 parameter <- initializeParameterObject(genome = genomes, sphi = c(0.5, 2), num.mixtures = 2, 
                                        gene.assignment = genome.pos$assignment, model = "ROC")
 
+parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
+
 model <- initializeModelObject(parameter = parameter, model = "ROC")
 
 mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
 
 ### Already ran - load in saves files
-#runMCMC(mcmc = mcmc, genome = genomes, model = model)
+runMCMC(mcmc = mcmc, genome = genomes, model = model)
  
 # Acceptance rates for Codon Specific Parameters
 # Target range: 0.175-0.375 
@@ -424,8 +426,8 @@ mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
 # mcmc <- loadMCMCObject(file = "test_mcmc.Rda")
 
 # #Saving data using C++ methods (which won't work with R methods)
-#writeParameterObject(parameter = parameter, file = "parameter_out_Ecoli_split_09162024.Rda")
-#writeMCMCObject(mcmc = mcmc, file = "mcmc_out_Ecoli_split_09162024.Rda")
+writeParameterObject(parameter = parameter, file = "parameter_out_Ecoli_split_fixDEta_09172024.Rda")
+writeMCMCObject(mcmc = mcmc, file = "mcmc_out_Ecoli_split_fixDEta_09172024.Rda")
 
 #Use this code to load it back in
 #parameter <- loadParameterObject(files = "parameter_out_Ecoli_split_09112024.Rda")
@@ -659,7 +661,7 @@ head(csp_mat_2)
 phi_mat <- getExpressionEstimates(parameter = parameter, 
                                   gene.index = 1:length(genomes),
                                   samples = 3000)
-head(phi_mat)
+phi.df <- phi_mat %>% data.frame() %>% `rownames<-`(genome.pos$id)
 
 # Histogram of posterior distribution
 ggplot(phi_mat, aes(x = Mean)) +
@@ -767,3 +769,33 @@ df <- parameter$getSynthesisRate()
 df_1 <- df[[1]]
 names(df_1) <- getNames(genomes)
 df.1 <- df_1 %>% data.frame()
+
+#Now, we need to capture the mutation and selection parameters for each codon
+#df <- parameter$
+
+#Trace is important for diagnostics, parameter is the actual estimate
+
+#Example Bayesplot method
+library("bayesplot")
+library("rstanarm")
+library("ggplot2")
+
+fit <- stan_glm(mpg ~ ., data = mtcars)
+posterior <- as.matrix(fit)
+
+plot_title <- ggtitle("Posterior distributions",
+                      "with medians and 80% intervals")
+mcmc_areas(posterior,
+           pars = c("cyl", "drat", "am", "wt"),
+           prob = 0.8) + plot_title
+
+#Now trying it out on our data - not sure what the ideal estimate is to plot
+mcmc_areas(
+  phi.df,
+  pars = c("Mean", "Mean.log10", "Std.Dev", "log10.Std.Dev"),
+  prob = 0.8
+) + plot_title
+
+
+
+
