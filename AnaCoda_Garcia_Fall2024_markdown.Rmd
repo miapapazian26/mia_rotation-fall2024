@@ -25,12 +25,9 @@ library(seqinr)
 library(bayesplot)
 ```
 
-First step is to load in the E.coli K-12 strain .fasta file (CDS).
+Load needed functions - long code chunk, minimize for ease of viewing after loading in functions
 
-```{r}
-
-#Define .fasta file in working directory
-dir <- "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+```{r, collapse=TRUE}
 
 #Define function
 chomp<-function(dir){  
@@ -98,85 +95,8 @@ chomp<-function(dir){
   genome <<- y
 }   #Load 'chomp' function to import .fasta files
 
-#Run function on .fasta file to import
-chomp(dir)
-
-```
-
-Next, we will partition the genome by sorting assigning each sequence F (forward) or R (reverse) strand. This depends on using Ensembl Bacteria's assignment (1 or -1).
-
-Source: <https://bacteria.ensembl.org/Escherichia_coli_str_k_12_substr_w3110_gca_000010245/Info/Index>
-
-```{r}
-
-#Take generated genome file and separate into groups based on chromosome strand assignment (1 or -1)
-reverse <- genome %>% filter(str_detect(Location, ":-1$")) %>% mutate(pos = "R", assignment = 2)
-forward <- genome %>% filter(str_detect(Location, ":1$")) %>% mutate(pos = "F", assignment = 1)
-genome.pos <- rbind(reverse, forward)   #This changed the order, which messed up the gene.assignments!
-genome.pos <- genome %>% left_join(genome.pos) %>% mutate(id = str_extract(Header, "^[^\\s]+"))
-
-#Determine gene distribution
-cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
-    "\nGenes on reverse strand:", nrow(reverse), "-->", (nrow(reverse)/nrow(genome))*100, "%")
-
-```
-
-We see that the split of coding sequences is roughly equal across the forward and reverse strands. Now we will begin initializing objects for the MCMC.
-
-```{r warning = FALSE}
-
-genomes <- initializeGenomeObject(
-  file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
-  )
-
-parameter <- initializeParameterObject(
-  genome = genomes,    #set genome file
-  sphi = c(0.5, 2),    #provide phi values
-  num.mixtures = 2,    #define number of groups
-  gene.assignment = genome.pos$assignment, #define gene assignments
-  model = "ROC"        #define model
-  )
-
-parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
-
-model <- initializeModelObject(parameter = parameter, model = "ROC")
-
-mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
-
-```
-
-Run the model [Current run time \~1.5hrs]
-
-```{r}
-
-#runMCMC(mcmc = mcmc, genome = genomes, model = model)
-
-```
-
-Make sure to save your files immediately after the run.
-
-```{r}
-
-#writeParameterObject(parameter = parameter, file = "parameter.file.name.Rda")
-#writeMCMCObject(mcmc = mcmc, file = "MCMC.file.name.Rda")
-
-```
-
-Use the following code to load in a previous run.
-
-```{r}
-
-#Use this code to load it back in
-#parameter <- loadParameterObject(files = "parameter_out_Ecoli_split_09112024.Rda")
-mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09162024.Rda")
-
-### This code was used to import parameter file an alternative way
-  #i <- 1
-  files <- "parameter_out_Ecoli_split_09162024.Rda"
-  
-  #load("parameter_out_Ecoli_split_09112024.Rda")
-  #This function is currently not working - FIXED
-  loadROCParameterObject <- function(parameter, files){
+#load("parameter_out_Ecoli_split_09112024.Rda")
+loadROCParameterObject <- function(parameter, files){
     
     setBaseInfo <- function(parameter, files){
       for (i in 1:length(files)) {
@@ -383,8 +303,207 @@ mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09162024.Rda")
     parameter$setTraceObject(trace)
     return(parameter) 
   }
-  
-  parameter <- loadROCParameterObject(parameter, files)
-###
 
 ```
+
+Now, we load in our CDS genome file. Example uses E.coli K-12 strain .fasta file (CDS).
+
+```{r}
+
+#Define .fasta file in working directory
+dir <- "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+
+#Run function on .fasta file to import
+chomp(dir)
+
+```
+
+Next, we will partition the genome by sorting assigning each sequence F (forward) or R (reverse) strand. This depends on using Ensembl Bacteria's assignment (1 or -1).
+
+Source: <https://bacteria.ensembl.org/Escherichia_coli_str_k_12_substr_w3110_gca_000010245/Info/Index>
+
+```{r}
+
+#Take generated genome file and separate into groups based on chromosome strand assignment (1 or -1)
+reverse <- genome %>% filter(str_detect(Location, ":-1$")) %>% mutate(pos = "R", assignment = 2)
+forward <- genome %>% filter(str_detect(Location, ":1$")) %>% mutate(pos = "F", assignment = 1)
+genome.pos <- rbind(reverse, forward)   #This changed the order, which messed up the gene.assignments!
+genome.pos <- genome %>% left_join(genome.pos) %>% mutate(id = str_extract(Header, "^[^\\s]+"))
+
+#Determine gene distribution
+cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
+    "\nGenes on reverse strand:", nrow(reverse), "-->", (nrow(reverse)/nrow(genome))*100, "%")
+
+```
+
+We see that the split of coding sequences is roughly equal across the forward and reverse strands. Now we will begin initializing objects for the MCMC.
+
+```{r warning = FALSE}
+
+genomes <- initializeGenomeObject(
+  file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+  )
+
+parameter <- initializeParameterObject(
+  genome = genomes,    #set genome file
+  sphi = c(0.5, 2),    #provide phi values
+  num.mixtures = 2,    #define number of groups
+  gene.assignment = genome.pos$assignment, #define gene assignments
+  model = "ROC"        #define model
+  )
+
+parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
+
+model <- initializeModelObject(parameter = parameter, model = "ROC")
+
+mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
+
+```
+
+Run the model [Current run time \~1.5hrs]
+
+```{r}
+
+#runMCMC(mcmc = mcmc, genome = genomes, model = model)
+
+```
+
+Make sure to save your files immediately after the run.
+
+```{r}
+
+#writeParameterObject(parameter = parameter, file = "parameter.file.name.Rda")
+#writeMCMCObject(mcmc = mcmc, file = "MCMC.file.name.Rda")
+
+```
+
+Use the following code to load in a previous run.
+
+```{r}
+
+mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09162024.Rda")
+
+files <- "parameter_out_Ecoli_split_09162024.Rda"
+  
+parameter <- loadROCParameterObject(parameter, files)
+
+```
+
+Now that we have our model run, let's see if we've reached convergence. The graphs are large, so you might get some errors about dimensions.
+
+```{r, fig.width=10, fig.height=10}
+
+trace <- getTrace(parameter)  #store the trace (i.e. record of all iterations)
+
+#Visualize the mutation parameters
+#We are looking for the lines to level out.
+plot.diag.1m <- plot(x = trace, what = "Mutation", mixture = 1)
+plot.diag.2m <- plot(x = trace, what = "Mutation", mixture = 2)
+
+#We can also visualize the selection parameter
+#Since we fixed DEta, it should be a single straight line.
+plot.diag.1s <- plot(x = trace, what = "Selection", mixture = 1)
+plot.diag.2s <- plot(x = trace, what = "Selection", mixture = 2)
+
+```
+
+The plots above should show each trace becoming more and more level. If not, increase the number of smaples to run during the MCMC. Now we can visualize codon use proportion as it relates to protein synthesis rate phi. We can also visualize how selection and mutation parameters correlated between our mixtures.
+
+```{r, fig.width=10, fig.height=10}
+
+#visualize the results of the model fit
+plot(x = model, genome = genomes, samples = 3000, mixture = 1)
+plot(x = model, genome = genomes, samples = 3000, mixture = 2)
+
+#This will compare different 'mixtures' i.e. gene sets
+plot(parameter, what = "Selection", samples = 3000)
+plot(parameter, what = "Mutation", samples = 3000)
+
+```
+
+Now, we want to extract the mutation trace for each individual codon.
+
+```{r}
+
+#Now to grab codon specific parameters
+mutationTrace <- trace$getCodonSpecificParameterTrace(0)
+
+#Take object of traces and feed into bayesplot
+names(mutationTrace) <- c("mix1", "mix2")
+
+#Get list of codons
+names.aa <- aminoAcids()
+names.aa <- setdiff(names.aa, c("W", "X", "M")) #remove W, X, and M
+
+#This should be the order conserved in mutationTrace[[i]]
+AA.df <- names.aa %>%                 #pipe amino acids
+  data.frame(aa = names.aa) %>%       #make a dataframe
+  select(-.) %>%                      #remove duplicated column
+  mutate(Codon = lapply(aa, AAToCodon)) %>% #make new column with associated codons for each amino acid
+  mutate(Codon = map(Codon, ~ .x[-length(.x)])) %>% #remove the reference codon (last alphabetical codon for each AA)
+  unnest(cols = c(Codon))                            #unnest column data
+
+#This assumes that the codons are sorted by amino acid, then codon sequence (i.e. A: GCA, GCC, GCG, etc.)
+names(mutationTrace[[1]]) <- AA.df$Codon
+names(mutationTrace[[2]]) <- AA.df$Codon
+
+#To verify this data matches our plotted trace data, plot a few codons individually to compare
+plot(mutationTrace$mix1$AGA, main = "Mixture 1: AGA", ylab = expression(Delta * M), xlab = "Samples")
+plot(mutationTrace$mix1$AGC, main = "Mixture 1: AGC", ylab = expression(Delta * M), xlab = "Samples")
+plot(mutationTrace$mix1$TTC, main = "Mixture 1: TTC", ylab = expression(Delta * M), xlab = "Samples")
+
+plot(mutationTrace$mix2$AGA, main = "Mixture 2: AGA", ylab = expression(Delta * M), xlab = "Samples")
+plot(mutationTrace$mix2$AGC, main = "Mixture 2: AGC", ylab = expression(Delta * M), xlab = "Samples")
+plot(mutationTrace$mix2$TTC, main = "Mixture 2: TTC", ylab = expression(Delta * M), xlab = "Samples")
+
+```
+
+Now that we have the posterior distributions of our estimated parameter, let's try to plot it using Bayesplot.
+
+```{r}
+
+#Making trace data frames
+mutTrace.1 <- mutationTrace$mix1 %>% data.frame()
+mutTrace.2 <- mutationTrace$mix2 %>% data.frame()
+
+#Moving on to Bayesplot
+posterior.1 <- as.matrix(mutTrace.1)                     #fit trace into posterior matrix
+posterior.2 <- as.matrix(mutTrace.2)
+
+mcmc_areas(posterior.1,                                  #supply the posterior matrix
+           pars = c("GCA", "GCC", "GCG"),                #supply the desired traces to plot
+           prob = 0.8) +                                 #supply desired interval
+  ggtitle("Posterior distributions: Codons of Alanine [Mixture 1]",  #supply title
+          "with medians and 80% intervals") +
+  coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
+
+mcmc_areas(posterior.2,                                  #supply the posterior matrix
+           pars = c("GCA", "GCC", "GCG"),                #supply the desired traces to plot
+           prob = 0.8) +                                 #supply desired interval
+  ggtitle("Posterior distributions: Codons of Alanine [Mixture 2]",  #supply title
+          "with medians and 80% intervals") +
+  coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
+
+```
+
+We can also directly compare codons across mixtures
+
+```{r}
+
+alanine <- data.frame(
+  GCA.1 = mutTrace.1$GCA,
+  GCA.2 = mutTrace.2$GCA,
+  GCC.1 = mutTrace.1$GCC,
+  GCC.2 = mutTrace.2$GCC,
+  GCG.1 = mutTrace.1$GCG,
+  GCG.2 = mutTrace.2$GCG
+)
+
+posterior <- as.matrix(alanine)
+
+mcmc_areas(posterior, prob = 0.8) + 
+  ggtitle("Alanine Posterior Distributions","with medians and 80% intervals")
+
+
+```
+
