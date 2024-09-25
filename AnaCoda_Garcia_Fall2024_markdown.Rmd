@@ -2,7 +2,9 @@
 title: "AnaCoDa_Fall2024_Garcia"
 author: "Sarah Garcia"
 date: "2024-09-17"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -23,6 +25,7 @@ library(tidyverse)
 library(AnaCoDa)
 library(seqinr)
 library(bayesplot)
+
 ```
 
 Load needed functions - long code chunk, minimize for ease of viewing after loading in functions
@@ -331,7 +334,7 @@ genome.pos <- rbind(reverse, forward)   #This changed the order, which messed up
 genome.pos <- genome %>% left_join(genome.pos) %>% mutate(id = str_extract(Header, "^[^\\s]+"))
 
 #Determine gene distribution
-cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%", 
+cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome))*100, "%",
     "\nGenes on reverse strand:", nrow(reverse), "-->", (nrow(reverse)/nrow(genome))*100, "%")
 
 ```
@@ -352,7 +355,7 @@ parameter <- initializeParameterObject(
   model = "ROC"        #define model
   )
 
-parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
+#parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
 
 model <- initializeModelObject(parameter = parameter, model = "ROC")
 
@@ -381,9 +384,9 @@ Use the following code to load in a previous run.
 
 ```{r}
 
-mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_09162024.Rda")
+mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_sharedSelection_09182024.Rda")
 
-files <- "parameter_out_Ecoli_split_09162024.Rda"
+files <- "parameter_out_Ecoli_split_sharedSelection_09182024.Rda"
   
 parameter <- loadROCParameterObject(parameter, files)
 
@@ -490,6 +493,7 @@ We can also directly compare codons across mixtures
 
 ```{r}
 
+#Example: show all codons of alanine across the mixtures
 alanine <- data.frame(
   GCA.1 = mutTrace.1$GCA,
   GCA.2 = mutTrace.2$GCA,
@@ -506,4 +510,3 @@ mcmc_areas(posterior, prob = 0.8) +
 
 
 ```
-
