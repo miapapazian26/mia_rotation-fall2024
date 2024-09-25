@@ -363,20 +363,20 @@ cat("Genes on forward strand:", nrow(forward), "-->", (nrow(forward)/nrow(genome
 #We now have two individual .fasta files for both the forward and reverse strands of the genome!
 #Now to return to AnaCoDa and import both files at two separate 'mixtures'
 
-genomes <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa")
-#genomes <- initializeGenomeObject(file = "Ecoli.K12.edit.fasta")
-
-#Initialize Parameter Object (Beware of typo in original code)
-parameter <- initializeParameterObject(genome = genomes, sphi = c(0.5, 2), num.mixtures = 2, 
-                                       gene.assignment = genome.pos$assignment, model = "ROC")
-
-#set mixture.definition = "selectionShared"
-
-parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
-
-model <- initializeModelObject(parameter = parameter, model = "ROC")
-
-mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
+# genomes <- initializeGenomeObject(file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa")
+# #genomes <- initializeGenomeObject(file = "Ecoli.K12.edit.fasta")
+# 
+# #Initialize Parameter Object (Beware of typo in original code)
+# parameter <- initializeParameterObject(genome = genomes, sphi = c(0.5, 2), num.mixtures = 2, 
+#                                        gene.assignment = genome.pos$assignment, model = "ROC")
+# 
+# #set mixture.definition = "selectionShared"
+# 
+# #parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
+# 
+# model <- initializeModelObject(parameter = parameter, model = "ROC")
+# 
+# mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
 
 ### Already ran - load in saves files
 #runMCMC(mcmc = mcmc, genome = genomes, model = model)
@@ -1190,7 +1190,7 @@ plot(parameter, what = "Mutation", samples = 3000)
 mutationTrace <- trace$getCodonSpecificParameterTrace(0)
 
 #Take object of traces and feed into bayesplot
-names(mutationTrace) <- c("mut", "sel")
+names(mutationTrace) <- c("mix1", "mix2")
 
 #Get list of codons
 names.aa <- aminoAcids()
@@ -1217,9 +1217,9 @@ plot(mutationTrace$mix2$AGA, main = "Mixture 2: AGA", ylab = expression(Delta * 
 plot(mutationTrace$mix2$AGC, main = "Mixture 2: AGC", ylab = expression(Delta * M), xlab = "Samples")
 plot(mutationTrace$mix2$TTC, main = "Mixture 2: TTC", ylab = expression(Delta * M), xlab = "Samples")
 
-#Making trace data frames
-mutTrace.1 <- mutationTrace$mix1 %>% data.frame()
-mutTrace.2 <- mutationTrace$mix2 %>% data.frame()
+#Making trace data frames and discard burn-in
+mutTrace.1 <- mutationTrace$mix1 %>% data.frame() %>% slice(-1:-2000)
+mutTrace.2 <- mutationTrace$mix2 %>% data.frame() %>% slice(-1:-2000)
 
 #Moving on to Bayesplot
 posterior.1 <- as.matrix(mutTrace.1)                       #fit trace into posterior matrix
@@ -1253,4 +1253,41 @@ posterior <- as.matrix(alanine)
 
 mcmc_areas(posterior, prob = 0.8) + 
   ggtitle("Alanine Posterior Distributions","with medians and 80% intervals")
+
+#Testing a visualization method
+ggplot() +
+  geom_point(aes(x = mutTrace.1$GCA, y = mutTrace.2$GCA)) +
+  geom_smooth(aes(x = mutTrace.1$GCA, y = mutTrace.2$GCA), method = "lm", color = "blue", se = TRUE) # Correlation line
+
+regression <- lm(mutTrace.2$GCA ~ mutTrace.1$GCA) 
+summary(regression)
+
+#Calculate the correlation between each 'pair' of codons (mixture1:mixture2)
+correlations <- sapply(names(mutTrace.1), function(col) {
+  cor(mutTrace.1[[col]], mutTrace.2[[col]])
+})
+
+codon.corr <- data.frame(
+  codon = names(correlations),
+  corr = correlations,
+  r.sq = correlations^2
+)
+
+hist(codon.corr$corr)
+hist(codon.corr$r.sq)
+
+# Run regression analysis and store results
+regression_results <- sapply(names(mutTrace.1), function(col) {
+  model <- lm(mutTrace.2[[col]] ~ mutTrace.1[[col]])
+  summary(model)$coefficients[2, ]  # Get the coefficient and its statistics
+})
+
+# Create a data frame from the results
+regression_df <- data.frame(
+  Codon = names(mutTrace.1),
+  Estimate = regression_results[1, ],
+  Std.Error = regression_results[2, ],
+  t.value = regression_results[3, ],
+  p.value = regression_results[4, ]
+)
 
