@@ -349,17 +349,20 @@ genomes <- initializeGenomeObject(
 
 parameter <- initializeParameterObject(
   genome = genomes,    #set genome file
-  sphi = c(0.5, 2),    #provide phi values
+  sphi = c(1, 1),    #provide phi values
   num.mixtures = 2,    #define number of groups
   gene.assignment = genome.pos$assignment, #define gene assignments
   model = "ROC"        #define model
   )
 
-#parameter$fixDEta() #fixing our selection parameter (i.e. assuming neutral selection for strandss)
-
 model <- initializeModelObject(parameter = parameter, model = "ROC")
 
 mcmc <- initializeMCMCObject(samples = 5000, thinning = 10, adaptive.width=50)
+
+#Set restart settings
+setRestartSettings(mcmc = mcmc, filename = "restart_out_Ecoli_split_sharedSelection_sphi1_09302024", 
+                   samples = 2500)
+
 
 ```
 
@@ -384,9 +387,9 @@ Use the following code to load in a previous run.
 
 ```{r}
 
-mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_sharedSelection_09182024.Rda")
+mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_sharedSelection_fixSphi_09292024.Rda")
 
-files <- "parameter_out_Ecoli_split_sharedSelection_09182024.Rda"
+files <- "parameter_out_Ecoli_split_sharedSelection_fixSphi_09292024.Rda"
   
 parameter <- loadROCParameterObject(parameter, files)
 
@@ -404,7 +407,6 @@ plot.diag.1m <- plot(x = trace, what = "Mutation", mixture = 1)
 plot.diag.2m <- plot(x = trace, what = "Mutation", mixture = 2)
 
 #We can also visualize the selection parameter
-#Since we fixed DEta, it should be a single straight line.
 plot.diag.1s <- plot(x = trace, what = "Selection", mixture = 1)
 plot.diag.2s <- plot(x = trace, what = "Selection", mixture = 2)
 
@@ -465,9 +467,9 @@ Now that we have the posterior distributions of our estimated parameter, let's t
 
 ```{r}
 
-#Making trace data frames
-mutTrace.1 <- mutationTrace$mix1 %>% data.frame()
-mutTrace.2 <- mutationTrace$mix2 %>% data.frame()
+#Making trace data frames and discard burn-in
+mutTrace.1 <- mutationTrace$mix1 %>% data.frame() %>% slice(-1:-2000)
+mutTrace.2 <- mutationTrace$mix2 %>% data.frame() %>% slice(-1:-2000)
 
 #Moving on to Bayesplot
 posterior.1 <- as.matrix(mutTrace.1)                     #fit trace into posterior matrix
@@ -477,15 +479,15 @@ mcmc_areas(posterior.1,                                  #supply the posterior m
            pars = c("GCA", "GCC", "GCG"),                #supply the desired traces to plot
            prob = 0.8) +                                 #supply desired interval
   ggtitle("Posterior distributions: Codons of Alanine [Mixture 1]",  #supply title
-          "with medians and 80% intervals") +
-  coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
+          "with medians and 80% intervals")# +
+  #coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
 
 mcmc_areas(posterior.2,                                  #supply the posterior matrix
            pars = c("GCA", "GCC", "GCG"),                #supply the desired traces to plot
            prob = 0.8) +                                 #supply desired interval
   ggtitle("Posterior distributions: Codons of Alanine [Mixture 2]",  #supply title
-          "with medians and 80% intervals") +
-  coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
+          "with medians and 80% intervals")# +
+  #coord_cartesian(xlim = c(-1.5, 0.5))                   #adjust x-axis
 
 ```
 
@@ -510,3 +512,153 @@ mcmc_areas(posterior, prob = 0.8) +
 
 
 ```
+
+Now, to calculate some correlations between codons on different strands.
+
+```{r}
+
+#Testing a visualization method
+ggplot() +
+  geom_point(aes(x = mutTrace.1$GCA, y = mutTrace.2$GCA)) +
+  geom_smooth(aes(x = mutTrace.1$GCA, y = mutTrace.2$GCA), method = "lm", color = "blue", se = TRUE) # Correlation line
+
+regression <- lm(mutTrace.2$GCA ~ mutTrace.1$GCA) 
+summary(regression)
+
+#Calculate the correlation between each 'pair' of codons (mixture1:mixture2)
+correlations <- sapply(names(mutTrace.1), function(col) {
+  cor(mutTrace.1[[col]], mutTrace.2[[col]])
+})
+
+codon.corr <- data.frame(
+  codon = names(correlations),
+  corr = correlations,
+  r.sq = correlations^2
+)
+
+hist(codon.corr$corr)
+hist(codon.corr$r.sq)
+
+print(codon.corr)
+
+# Run regression analysis and store results
+regression_results <- sapply(names(mutTrace.1), function(col) {
+  model <- lm(mutTrace.2[[col]] ~ mutTrace.1[[col]])
+  summary(model)$coefficients[2, ]  # Get the coefficient and its statistics
+})
+
+# Create a data frame from the results
+regression_df <- data.frame(
+  Codon = names(mutTrace.1),
+  Estimate = regression_results[1, ],
+  Std.Error = regression_results[2, ],
+  t.value = regression_results[3, ],
+  p.value = regression_results[4, ]
+)
+
+print(regression_df)
+
+```
+
+Let's examine our phi values
+
+```{r}
+
+#Now, back to our trace
+phi_trace <- trace$getSynthesisRateTrace()[[1]]
+names(phi_trace) <- getNames(genomes)
+phi.trace <- phi_trace %>% data.frame() %>% slice(-1:-2000)
+print(mean(colMeans(phi.trace, na.rm = TRUE)))
+print(median(colMeans(phi.trace, na.rm = TRUE)))
+print(range(colMeans(phi.trace, na.rm = TRUE)))
+
+#Plotting phi distribution across genes
+phi.trace.long <- phi.trace %>% pivot_longer(cols = 1:ncol(.), names_to = "gene", values_to = "phi") %>%
+  mutate(phi.log = log(phi))
+hist(phi.trace.long$phi)
+hist(phi.trace.long$phi.log)
+
+```
+
+Now, let's view some empirical data. Importing RNA-seq data from:
+
+Bhatia, Rama P., et al. “Transcriptomic Profiling of Escherichia Coli K-12 in Response to a Compendium of Stressors.” Scientific Reports, vol. 12, no. 1, May 2022, p. 8788. DOI.org (Crossref), <https://doi.org/10.1038/s41598-022-12463-3>.
+
+```{r}
+
+#Now, import ecoli expression data [Bhatia et al. 2022]
+ecoli.data <- load_file("ecoli_expression_data.csv")
+ecoli.data[ecoli.data == 0] <- NA
+#ecoli.data[ecoli.data < 1] <- NA
+
+e <- ecoli.data %>% select(-Locus_tag) %>% distinct() %>%
+  mutate_at(.vars = 2:ncol(.), log) %>% column_to_rownames(var = "Gene_name")
+
+#Plotting phi distribution across genes and calculating mean.normed data
+e.long <- e %>% pivot_longer(cols = 1:ncol(.), names_to = "sample", values_to = "abundance") %>%
+  mutate(m.norm = abundance / mean(abundance, na.rm = TRUE))
+
+hist(e.long$abundance)
+hist(e.long$m.norm)
+
+print(mean(e.long$m.norm, na.rm = TRUE))
+print(median(e.long$m.norm, na.rm = TRUE))
+print(range(e.long$m.norm, na.rm = TRUE))
+
+```
+
+Other plots
+
+```{r}
+
+#Plot selection on y-axis and mutation on x-axis for each codon
+selectionTrace <- trace$getCodonSpecificParameterTrace(1)
+sel_Trace <- selectionTrace[[1]]
+names(sel_Trace) <- AA.df$Codon
+
+#Making trace data frames and discard burn-in
+selTrace <- sel_Trace %>% data.frame() %>% slice(-1:-2000)
+
+#Overlayed plots
+ggplot() +
+  # First scatterplot
+  geom_point(aes(x = mutTrace.1$GCA, y = selTrace$GCA), color = "red", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.1$GCA, y = selTrace$GCA), method = "lm", color = "red", se = TRUE) +
+  
+  # Second scatterplot
+  geom_point(aes(x = mutTrace.2$GCA, y = selTrace$GCA), color = "blue", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.2$GCA, y = selTrace$GCA), method = "lm", color = "blue", se = TRUE) +
+  
+  labs(title = "Selection and Mutation Trace: GCA", x = expression(Delta * M), y = expression(Delta * n),
+       subtitle = "\tRed:leading | Blue:lagging")
+
+
+#Overlayed plots
+ggplot() +
+  # First scatterplot
+  geom_point(aes(x = mutTrace.1$TTC, y = selTrace$TTC), color = "red", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.1$TTC, y = selTrace$TTC), method = "lm", color = "red", se = TRUE) +
+  
+  # Second scatterplot
+  geom_point(aes(x = mutTrace.2$TTC, y = selTrace$TTC), color = "blue", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.2$TTC, y = selTrace$TTC), method = "lm", color = "blue", se = TRUE) +
+  
+  labs(title = "Selection and Mutation Trace: TTC", x = expression(Delta * M), y = expression(Delta * n),
+       subtitle = "\tRed:leading | Blue:lagging")
+
+
+#Overlayed plots
+ggplot() +
+  # First scatterplot
+  geom_point(aes(x = mutTrace.1$TTC, y = selTrace$TTC), color = "red", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.1$TTC, y = selTrace$TTC), method = "lm", color = "red", se = TRUE) +
+  
+  # Second scatterplot
+  geom_point(aes(x = mutTrace.2$TTC, y = selTrace$TTC), color = "blue", alpha = 0.6) +
+  geom_smooth(aes(x = mutTrace.2$TTC, y = selTrace$TTC), method = "lm", color = "blue", se = TRUE) +
+  
+  labs(title = "Selection and Mutation Trace: TTC", x = expression(Delta * M), y = expression(Delta * n),
+       subtitle = "\tRed:leading | Blue:lagging")
+
+```
+
