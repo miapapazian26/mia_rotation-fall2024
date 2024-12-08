@@ -314,7 +314,7 @@ Now, we load in our CDS genome file. Example uses E.coli K-12 strain .fasta file
 ```{r}
 
 #Define .fasta file in working directory
-dir <- "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+dir <- "/Users/miapapazian/repositories/mia_rotation-fall2024/data/Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
 
 #Run function on .fasta file to import
 chomp(dir)
@@ -344,7 +344,7 @@ We see that the split of coding sequences is roughly equal across the forward an
 ```{r warning = FALSE}
 
 genomes <- initializeGenomeObject(
-  file = "Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
+  file = "/Users/miapapazian/repositories/mia_rotation-fall2024/data/Escherichia_coli_str_k_12_substr_w3110_gca_000010245.ASM1024v1.cds.all.fa"
   )
 
 parameter <- initializeParameterObject(
@@ -387,9 +387,9 @@ Use the following code to load in a previous run.
 
 ```{r}
 
-mcmc <- loadMCMCObject(file = "mcmc_out_Ecoli_split_sharedSelection_fixSphi_09292024.Rda")
+mcmc <- loadMCMCObject(file = "/Users/miapapazian/repositories/mia_rotation-fall2024/outputs/mcmc_out_Ecoli_split_sharedSelection_09292024.Rda")
 
-files <- "parameter_out_Ecoli_split_sharedSelection_fixSphi_09292024.Rda"
+files <- "/Users/miapapazian/repositories/mia_rotation-fall2024/outputs/parameter_out_Ecoli_split_sharedSelection_09292024.Rda"
   
 parameter <- loadROCParameterObject(parameter, files)
 
@@ -587,7 +587,7 @@ Bhatia, Rama P., et al. “Transcriptomic Profiling of Escherichia Coli K-12 in 
 ```{r}
 
 #Now, import ecoli expression data [Bhatia et al. 2022]
-ecoli.data <- load_file("ecoli_expression_data.csv")
+ecoli.data <- read.csv("/Users/miapapazian/repositories/mia_rotation-fall2024/data/ecoli_expression_data.csv")
 ecoli.data[ecoli.data == 0] <- NA
 #ecoli.data[ecoli.data < 1] <- NA
 
