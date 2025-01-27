@@ -12,13 +12,13 @@ rownames(expression_data) <- data$Gene_name  # use gene names as row identifiers
 expression_data <- scale(expression_data)  
 
 # calculate variance for each gene (row-wise)
-gene_variance <- apply(expression_data, 1, var)
+gene_variance <- apply(expression_data, 1, var) #variance calculated for each gene row wise, higher variance = greater variability
 
 # select the top 10 most variable genes
-top_genes <- names(sort(gene_variance, decreasing = TRUE)[1:10])
+top_genes <- names(sort(gene_variance, decreasing = TRUE)[1:10]) #top ten genes w/ highest variance
 
 # subset the data to only include the top 10 genes
-expression_subset <- expression_data[top_genes, ]
+expression_subset <- expression_data[top_genes, ] #filter
 
 # perform CLARA clustering on the subset data
 clara_result <- clara(expression_subset, k = 3)  # 3 clusters, adjust k as needed
